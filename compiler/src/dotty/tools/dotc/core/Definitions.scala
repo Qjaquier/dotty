@@ -342,6 +342,8 @@ class Definitions {
     ScalaPackageClass, tpnme.Null, AbstractFinal, List(ObjectClass.typeRef))
   def NullType = NullClass.typeRef
   lazy val RuntimeNullModuleRef = ctx.requiredModuleRef("scala.runtime.Null")
+  
+  lazy val InvokerModuleRef = ctx.requiredModuleRef("dotty.runtime.Invoker")
 
   lazy val ScalaPredefModuleRef = ctx.requiredModuleRef("scala.Predef")
   def ScalaPredefModule(implicit ctx: Context) = ScalaPredefModuleRef.symbol
