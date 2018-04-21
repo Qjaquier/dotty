@@ -47,6 +47,8 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
   protected def newTransformer(implicit ctx: Context): Transformer = new CoverageTransformer
 
   class CoverageTransformer extends Transformer {
+    var instrumented = false
+
     override def transform(tree: Tree)(implicit ctx: Context): Tree = {
         tree match {
           case tree:If =>
@@ -54,12 +56,22 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
             //but only counted once in the statement coverage percentage.
             //It seems not possible to instrument it once due to nested if that will not be correctly handled.
             cpy.If(tree)(thenp = instrument(super.transform(tree.thenp), true), elsep = instrument(super.transform(tree.elsep), true))
-          // case tree : ValDef =>
-          //   if(tree.pos.isSourceDerived){
-          //     cpy.ValDef(tree)(rhs = instrument(tree.rhs))
-          //   } else{
-          //     tree
-          //   }
+           case tree : ValDef =>
+             //If the RHS components has not been instrumented, do it here
+             if(tree.pos.isSourceDerived){
+               cpy.ValDef(tree)(rhs = instrumentIfNotAlready(tree.rhs))
+             } else{
+               tree
+               //cpy.ValDef(tree)(rhs = super.transform(tree.rhs))
+             }
+          case tree : DefDef =>
+            //Same idea as ValDef
+             if(tree.pos.isSourceDerived){
+               cpy.DefDef(tree)(rhs = instrumentIfNotAlready(tree.rhs))
+             } else{
+               tree
+              //cpy.DefDef(tree)(rhs = super.transform(tree.rhs))
+             }
           case tree : Apply =>
             super.transform(tree)
           case tree : Match =>
@@ -70,7 +82,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
             cpy.Try(tree)(expr = instrument(tree.expr, true), cases  = instrumentCases(tree.cases), finalizer = instrument(tree.finalizer, true))
           case tree : Select =>
             //TODO : Instrument the name ?
-            if(tree.pos.isSourceDerived){
+            if(tree.pos.isSourceDerived || tree.qualifier.pos.isSourceDerived){
               cpy.Select(tree)(instrument(tree.qualifier), tree.name)
             } else {
               tree
@@ -78,16 +90,22 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
 
           case tree : CaseDef =>
             instrumentCaseDef(tree)
-          case tree:Literal =>
+          case tree : Literal =>
             instrument(super.transform(tree))
-          case tree:Ident =>
+          case tree : Ident =>
                 if(tree.isType || !tree.pos.isSourceDerived){// || tree.isValue){
                   //Don't instrument a type
                   tree
                 } else {
                   instrument(super.transform(tree))
                 }
-
+          //Don't instrument the other kind of tree
+          case tree : Import =>
+            //Don't instrument the imports
+            tree
+          case tree :  PackageDef =>
+            //Don't instrument the pid of the package
+            cpy.PackageDef(tree)(tree.pid, super.transform(tree.stats))
           case _ => super.transform(tree)
         }
     }
@@ -98,7 +116,19 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
 
     def instrumentCaseDef(tree : CaseDef)(implicit ctx: Context) : CaseDef = {
       //Don't add coverage to the pattern
-      cpy.CaseDef(tree)(tree.pat, super.transform(tree.guard), super.transform(tree.body))
+      cpy.CaseDef(tree)(tree.pat, super.transform(tree.guard), instrumentIfNotAlready(tree.body))
+    }
+
+    /**
+    * Instrument the tree only if the inside has not already been instrumented
+    */
+    def instrumentIfNotAlready(tree : Tree)(implicit ctx: Context) : Tree = {
+      instrumented = false
+      val transformedTree = super.transform(tree)
+      if(instrumented)
+          transformedTree
+        else
+          instrument(tree)
     }
 
     def instrument(tree : Tree, branch: Boolean = false)(implicit ctx: Context) : Tree = {
@@ -118,6 +148,8 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
         )
 
         coverage.addStatement(statement)
+
+        instrumented = true
 
         Block(List(invokeCall(id)), super.transform(tree))
       } else {
