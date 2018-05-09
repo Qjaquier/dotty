@@ -16,7 +16,10 @@ import dotty.tools.dotc.coverage.Serializer
 import dotty.tools.dotc.core.Types._
 import dotty.tools.dotc.core.Symbols._
 import dotty.tools.dotc.core.Decorators._
+import dotty.tools.dotc.typer.LiftCoverage
 import java.io.File
+import collection.mutable
+import dotty.tools.dotc.util.Positions._
 
 
 class CoverageTransformMacro extends MacroTransform with IdentityDenotTransformer { thisPhase =>
@@ -51,61 +54,61 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
 
     override def transform(tree: Tree)(implicit ctx: Context): Tree = {
         tree match {
-          case tree:If =>
+          case tree: If =>
             //This is instrumentation for branch coverage, the thenp and elesp will be instrumented twice
             //but only counted once in the statement coverage percentage.
             //It seems not possible to instrument it once due to nested if that will not be correctly handled.
-            cpy.If(tree)(thenp = instrument(super.transform(tree.thenp), true), elsep = instrument(super.transform(tree.elsep), true))
-           case tree : ValDef =>
-             //If the RHS components has not been instrumented, do it here
-             if(tree.pos.isSourceDerived){
-               cpy.ValDef(tree)(rhs = instrumentIfNotAlready(tree.rhs))
-             } else{
-               tree
-               //cpy.ValDef(tree)(rhs = super.transform(tree.rhs))
-             }
-          case tree : DefDef =>
-            //Same idea as ValDef
-             if(tree.pos.isSourceDerived){
-               cpy.DefDef(tree)(rhs = instrumentIfNotAlready(tree.rhs))
-             } else{
-               tree
-              //cpy.DefDef(tree)(rhs = super.transform(tree.rhs))
-             }
-          case tree : Apply =>
-            super.transform(tree)
-          case tree : Match =>
-            //Don't instrument the selector
-            cpy.Match(tree)(tree.selector, instrumentCases(tree.cases))
-          case tree : Try =>
+            cpy.If(tree)(cond = transform(tree.cond), thenp = instrument(transform(tree.thenp), true), elsep = instrument(transform(tree.elsep), true))
+          case tree: Try =>
             //Instrument try and finally part as branch
-            cpy.Try(tree)(expr = instrument(tree.expr, true), cases  = instrumentCases(tree.cases), finalizer = instrument(tree.finalizer, true))
-          case tree : Select =>
-            //TODO : Instrument the name ?
-            if(tree.pos.isSourceDerived || tree.qualifier.pos.isSourceDerived){
-              cpy.Select(tree)(instrument(tree.qualifier), tree.name)
+            cpy.Try(tree)(expr = instrument(transform(tree.expr), true), cases  = instrumentCases(tree.cases), finalizer = instrument(transform(tree.finalizer), true))
+          case tree: Apply =>
+           // tree.symbol.
+            if(LiftCoverage.needLift(tree)){
+              var buffer = mutable.ListBuffer[Tree]()
+              //If only one of the args needs to be lifted, we have to lift everything
+              val lifted = LiftCoverage.liftForCoverage(buffer,tree)
+              //Instrument the new trees lifted
+              val instrumented = buffer.toList.map(transform)
+              //We can now instrument the apply as it is with a custom position to point to the function
+              Block(instrumented, instrument(lifted, Position(tree.fun.pos.point,tree.fun.pos.end) ,false))
             } else {
-              tree
+              //No arguments to lift, continue the instrumentation on the subtree
+              super.transform(tree)
             }
-
-          case tree : CaseDef =>
+          case tree: Select =>
+            if(tree.qualifier.isInstanceOf[New]){
+              //New must be wrapped in a select, instrument the whole select
+              instrument(tree)
+            } else {
+              cpy.Select(tree)(transform(tree.qualifier), tree.name)
+            }
+          case tree: CaseDef =>
             instrumentCaseDef(tree)
-          case tree : Literal =>
-            instrument(super.transform(tree))
-          case tree : Ident =>
-                if(tree.isType || !tree.pos.isSourceDerived){// || tree.isValue){
-                  //Don't instrument a type
-                  tree
-                } else {
-                  instrument(super.transform(tree))
-                }
-          //Don't instrument the other kind of tree
-          case tree : Import =>
-            //Don't instrument the imports
+          //Instrument as it is
+          case tree: Literal =>
+            instrument(tree)
+          case tree: Ident =>
+            instrument(tree)
+          case tree: New =>
+            instrument(tree)
+          case tree: This =>
+            instrument(tree)
+          case tree: Super =>
+            instrument(tree)
+          //Instrument partially
+          case tree: PackageDef =>
+            //Don't instrument the pid of the package but instrument the statements
+            cpy.PackageDef(tree)(tree.pid, transform(tree.stats))
+          case tree:Assign =>
+            cpy.Assign(tree)(tree.lhs, transform(tree.rhs))
+          //Don't instrument
+          case tree: Import =>
             tree
-          case tree :  PackageDef =>
-            //Don't instrument the pid of the package
-            cpy.PackageDef(tree)(tree.pid, super.transform(tree.stats))
+          //Transform the rest
+          case tree:Closure =>
+            print(tree)
+            tree
           case _ => super.transform(tree)
         }
     }
@@ -115,45 +118,35 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
     }
 
     def instrumentCaseDef(tree : CaseDef)(implicit ctx: Context) : CaseDef = {
-      //Don't add coverage to the pattern
-      cpy.CaseDef(tree)(tree.pat, super.transform(tree.guard), instrumentIfNotAlready(tree.body))
-    }
-
-    /**
-    * Instrument the tree only if the inside has not already been instrumented
-    */
-    def instrumentIfNotAlready(tree : Tree)(implicit ctx: Context) : Tree = {
-      instrumented = false
-      val transformedTree = super.transform(tree)
-      if(instrumented)
-          transformedTree
-        else
-          instrument(tree)
+      //Don't add coverage to the pattern // TODO : Check if not alreay done
+      cpy.CaseDef(tree)(tree.pat, transform(tree.guard), transform(tree.body))
     }
 
     def instrument(tree : Tree, branch: Boolean = false)(implicit ctx: Context) : Tree = {
-      if(tree.pos.exists){// && tree.pos.isSourceDerived){ //
+      instrument(tree, tree.pos, branch)
+    }
+
+    def instrument(tree : Tree, pos: Position,  branch: Boolean)(implicit ctx: Context) : Tree = {
+      if(pos.exists && !pos.isZeroExtent && !tree.isType){// && !tree.symbol.is(Flags.PackageClass)
         val id = statementId.incrementAndGet()
         val statement = new Statement(
           ctx.source.file.absolute.toString(), //Source
           Location(tree),
           id, //id
-          tree.pos.start, //start
-          tree.pos.end, //end
-          ctx.source.offsetToLine(tree.pos.point), //line number
+          pos.start, //start
+          pos.end, //end
+          ctx.source.offsetToLine(pos.point), //line number
           tree.toString(), //Description
           tree.symbol.toString(), //symbol name
           tree.toString(),//Tree name
           branch //Branch
         )
-
+        //Add the statement to the coverage data
         coverage.addStatement(statement)
-
-        instrumented = true
-
-        Block(List(invokeCall(id)), super.transform(tree))
+        //Return the new tree with the instrumented tree
+        Block(List(invokeCall(id)), tree)
       } else {
-        //No position, nothing to instrument
+        //No position or the tree is a type, nothing to instrument
         tree
       }
     }

@@ -42,7 +42,7 @@ abstract class Lifter {
   /** The tree of a lifted definition */
   protected def liftedDef(sym: TermSymbol, rhs: Tree)(implicit ctx: Context): MemberDef = ValDef(sym, rhs)
 
-  private def lift(defs: mutable.ListBuffer[Tree], expr: Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): Tree =
+  protected def lift(defs: mutable.ListBuffer[Tree], expr: Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): Tree =
     if (noLift(expr)) expr
     else {
       val name = UniqueName.fresh(prefix)
@@ -50,7 +50,7 @@ abstract class Lifter {
       if (liftedFlags.is(Method)) liftedType = ExprType(liftedType)
       val lifted = ctx.newSymbol(ctx.owner, name, liftedFlags, liftedType, coord = positionCoord(expr.pos))
       defs += liftedDef(lifted, expr).withPos(expr.pos.focus)
-      ref(lifted.termRef).withPos(expr.pos)
+      ref(lifted.termRef).withPos(expr.pos.focus)
     }
 
   /** Lift out common part of lhs tree taking part in an operator assignment such as
@@ -70,7 +70,7 @@ abstract class Lifter {
   }
 
   /** Lift a function argument, stripping any NamedArg wrapper */
-  private def liftArg(defs: mutable.ListBuffer[Tree], arg: Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): Tree =
+  protected def liftArg(defs: mutable.ListBuffer[Tree], arg: Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): Tree =
     arg match {
       case arg @ NamedArg(name, arg1) => cpy.NamedArg(arg)(name, lift(defs, arg1, prefix))
       case arg => lift(defs, arg, prefix)
@@ -148,6 +148,62 @@ class LiftComplex extends Lifter {
   override def exprLifter = LiftToDefs
 }
 object LiftComplex extends LiftComplex
+
+/** Lift complex + lift the prefixes */
+object LiftCoverage extends LiftComplex {
+
+  var liftEverything = false
+
+
+  /** Return true if the apply needs a lift in the coverage phase
+  Return false if the args are empty, if one or more will be lifter by a complex lifter or if one of the args is of type typed (list)
+   */
+  def needLift(tree: tpd.Apply)(implicit ctx: Context): Boolean = {
+    //TODO : Currently don't instrument the typed tree, do we need it  ??
+    !tree.args.isEmpty && !tree.args.forall(super.noLift(_)) && tree.args.forall(!_.isInstanceOf[tpd.Typed])
+  }
+
+override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && super.noLift(expr)
+
+  //Lifte everything
+  //def noLift(expr: tpd.Tree)(implicit ctx: Context) = false
+
+  def liftForCoverage(defs: mutable.ListBuffer[tpd.Tree], tree: tpd.Apply)(implicit ctx: Context) = {
+    //Try to lift the fun with the complex noLift
+    val liftedFun = liftApp(defs, tree.fun)
+    //We want to lift every args
+    liftEverything = true
+    val liftedArgs = liftArgs(defs, tree.fun.tpe, tree.args)
+    liftEverything = false
+    tpd.cpy.Apply(tree)(liftedFun, liftedArgs)
+
+
+/*
+    val liftedArgs = liftArgs(defs, tree.fun.tpe, tree.args)
+    if(defs.isEmpty){
+      //No arguments are lifted, simply return the same tree
+      tree
+    } else {
+      //Some arguments have been lifted, we have to lift the prefix in all cases
+      val a = tree.fun
+    }
+    null*/
+  }
+
+    /** Lift a function argument, stripping any NamedArg wrapper */
+  // override protected def liftArg(defs: mutable.ListBuffer[tpd.Tree], arg: tpd.Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): tpd.Tree =
+  //   arg match {
+  //     case arg @ NamedArg(name, arg1) => tpd.cpy.NamedArg(arg)(name, lift(defs, arg1, prefix))
+  //     case arg: tpd.Typed => liftArg(defs, arg.expr)
+  //     case arg: tpd.SeqLiteral =>  arg.elems.map(liftArg(defs,_));null
+  //     case arg => lift(defs, arg, prefix)
+  //   }
+/*
+  override def liftPrefix(defs: mutable.ListBuffer[tpd.Tree], tree: tpd.Tree)(implicit ctx: Context): tpd.Tree = tree match {
+    case New(_) => tree
+    case _ => lift(defs, tree)
+  }*/
+}
 
 /** Lift all impure or complex arguments to `def`s */
 object LiftToDefs extends LiftComplex {
