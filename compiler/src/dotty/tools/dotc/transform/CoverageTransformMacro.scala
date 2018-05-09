@@ -62,8 +62,10 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           case tree: Try =>
             //Instrument try and finally part as branch
             cpy.Try(tree)(expr = instrument(transform(tree.expr), true), cases  = instrumentCases(tree.cases), finalizer = instrument(transform(tree.finalizer), true))
+          case Apply(fun, _) if(fun.symbol == defn.Boolean_&& || fun.symbol == defn.Boolean_||) =>
+            //Don't lift the argument of Or and And in order to not change the execution order due to short-circuit
+            super.transform(tree)
           case tree: Apply =>
-           //TODO: do not lift boolean : tree.symbol.
             if(LiftCoverage.needLift(tree)){
               var buffer = mutable.ListBuffer[Tree]()
               //If only one of the args needs to be lifted, we have to lift everything
@@ -106,9 +108,8 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           case tree: Import =>
             tree
           //Transform the rest
-          case tree:Closure =>
-            print(tree)
-            tree
+          // case tree:Closure =>
+          //   tree
           case _ => super.transform(tree)
         }
     }
