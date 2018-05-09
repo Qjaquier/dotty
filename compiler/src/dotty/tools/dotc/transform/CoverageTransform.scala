@@ -15,6 +15,7 @@ import dotty.tools.dotc.coverage.Serializer
 import dotty.tools.dotc.core.Types._
 import dotty.tools.dotc.core.Symbols._
 import dotty.tools.dotc.core.Decorators._
+import dotty.tools.dotc.typer.Lifter
 import java.io._
 
 
@@ -39,7 +40,7 @@ class CoverageTransform extends MiniPhase with IdentityDenotTransformer { thisPh
           val dataDir = new File(outputPath)
           dataDir.listFiles.filter(_.getName.startsWith("scoverage.")).foreach(_.delete)
           //Write to a file the data of the coverage
-          //Serializer.serialize(coverage, outputPath)
+          Serializer.serialize(coverage, outputPath)
     }
   }
 
@@ -51,16 +52,30 @@ class CoverageTransform extends MiniPhase with IdentityDenotTransformer { thisPh
   }
 
   override def transformSelect(tree: Select)(implicit ctx: Context) = {
-    // println()
-    // println(tree.show)
+     println("Qualif")
+     println(tree.qualifier.show)
+    println(tree.qualifier.isPattern)
+    println(tree.qualifier.isType)
+    println(tree.qualifier.isValue)
     // println("end")
     //instrument(tree)
     //tree
-    cpy.Select(tree)(instrument(tree.qualifier), tree.name)
+    //if(tree.qualifier.isValue){
+    //  tree
+    //} else {
+      cpy.Select(tree)(instrument(tree.qualifier), tree.name)
+    //}
   }
 
 //TODO : probleme here
   override def transformIdent(tree: Ident)(implicit ctx: Context) = {
+    // println()
+    // println("Ident")
+    // println(tree.show)
+    // println(tree.isPattern)
+    // println(tree.isType)
+    // println(tree.isValue)
+
     if(tree.isType || tree.isValue){
       //Don't instrument a type
       tree
