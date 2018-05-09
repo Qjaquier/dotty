@@ -156,11 +156,10 @@ object LiftCoverage extends LiftComplex {
 
 
   /** Return true if the apply needs a lift in the coverage phase
-  Return false if the args are empty, if one or more will be lifter by a complex lifter or if one of the args is of type typed (list)
+    Return false if the args are empty, if one or more will be lifter by a complex lifter.
    */
   def needLift(tree: tpd.Apply)(implicit ctx: Context): Boolean = {
-    //TODO : Currently don't instrument the typed tree, do we need it  ??
-    !tree.args.isEmpty && !tree.args.forall(super.noLift(_)) && tree.args.forall(!_.isInstanceOf[tpd.Typed])
+    !tree.args.isEmpty && !tree.args.forall(super.noLift(_))
   }
 
 override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && super.noLift(expr)
