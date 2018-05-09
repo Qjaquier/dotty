@@ -165,9 +165,6 @@ object LiftCoverage extends LiftComplex {
 
 override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && super.noLift(expr)
 
-  //Lifte everything
-  //def noLift(expr: tpd.Tree)(implicit ctx: Context) = false
-
   def liftForCoverage(defs: mutable.ListBuffer[tpd.Tree], tree: tpd.Apply)(implicit ctx: Context) = {
     //Try to lift the fun with the complex noLift
     val liftedFun = liftApp(defs, tree.fun)
@@ -176,33 +173,7 @@ override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && 
     val liftedArgs = liftArgs(defs, tree.fun.tpe, tree.args)
     liftEverything = false
     tpd.cpy.Apply(tree)(liftedFun, liftedArgs)
-
-
-/*
-    val liftedArgs = liftArgs(defs, tree.fun.tpe, tree.args)
-    if(defs.isEmpty){
-      //No arguments are lifted, simply return the same tree
-      tree
-    } else {
-      //Some arguments have been lifted, we have to lift the prefix in all cases
-      val a = tree.fun
-    }
-    null*/
   }
-
-    /** Lift a function argument, stripping any NamedArg wrapper */
-  // override protected def liftArg(defs: mutable.ListBuffer[tpd.Tree], arg: tpd.Tree, prefix: TermName = EmptyTermName)(implicit ctx: Context): tpd.Tree =
-  //   arg match {
-  //     case arg @ NamedArg(name, arg1) => tpd.cpy.NamedArg(arg)(name, lift(defs, arg1, prefix))
-  //     case arg: tpd.Typed => liftArg(defs, arg.expr)
-  //     case arg: tpd.SeqLiteral =>  arg.elems.map(liftArg(defs,_));null
-  //     case arg => lift(defs, arg, prefix)
-  //   }
-/*
-  override def liftPrefix(defs: mutable.ListBuffer[tpd.Tree], tree: tpd.Tree)(implicit ctx: Context): tpd.Tree = tree match {
-    case New(_) => tree
-    case _ => lift(defs, tree)
-  }*/
 }
 
 /** Lift all impure or complex arguments to `def`s */

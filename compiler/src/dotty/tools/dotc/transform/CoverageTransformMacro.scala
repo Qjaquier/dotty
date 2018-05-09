@@ -63,7 +63,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
             //Instrument try and finally part as branch
             cpy.Try(tree)(expr = instrument(transform(tree.expr), true), cases  = instrumentCases(tree.cases), finalizer = instrument(transform(tree.finalizer), true))
           case tree: Apply =>
-           // tree.symbol.
+           //TODO: do not lift boolean : tree.symbol.
             if(LiftCoverage.needLift(tree)){
               var buffer = mutable.ListBuffer[Tree]()
               //If only one of the args needs to be lifted, we have to lift everything
