@@ -73,6 +73,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
               //Instrument the new trees lifted
               val instrumented = buffer.toList.map(transform)
               //We can now instrument the apply as it is with a custom position to point to the function
+
               Block(instrumented, instrument(lifted, Position(tree.fun.pos.point,tree.fun.pos.end) ,false))
             } else {
               //No arguments to lift, continue the instrumentation on the subtree
@@ -104,6 +105,10 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
             cpy.PackageDef(tree)(tree.pid, transform(tree.stats))
           case tree:Assign =>
             cpy.Assign(tree)(tree.lhs, transform(tree.rhs))
+          case tree: Template =>
+            //Don't instrument the parents (extends) of template
+            //Causes problem if the parent contructor takes parameters
+            cpy.Template(tree)(super.transformSub(tree.constr), tree.parents, tree.self, transform(tree.body))
           //Don't instrument
           case tree: Import =>
             tree
@@ -128,8 +133,10 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
     }
 
     def instrument(tree : Tree, pos: Position,  branch: Boolean)(implicit ctx: Context) : Tree = {
+      //return tree
       if(pos.exists && !pos.isZeroExtent && !tree.isType){// && !tree.symbol.is(Flags.PackageClass)
         val id = statementId.incrementAndGet()
+       //if(id == 5) return tree
         val statement = new Statement(
           ctx.source.file.absolute.toString(), //Source
           Location(tree),
