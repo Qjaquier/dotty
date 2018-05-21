@@ -73,12 +73,14 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
               //Instrument the new trees lifted
               val instrumented = buffer.toList.map(transform)
               //We can now instrument the apply as it is with a custom position to point to the function
-
               Block(instrumented, instrument(lifted, Position(tree.fun.pos.point,tree.fun.pos.end) ,false))
             } else {
               //No arguments to lift, continue the instrumentation on the subtree
               super.transform(tree)
             }
+          case Select(qual, _) if(qual.symbol.moduleClass == defn.SystemModule) =>
+            //Java class can't be used as a value, we can't instrument the qualifier ({<Probe>;System}.xyz() is not possible !) instrument it as it is
+            instrument(tree)
           case tree: Select =>
             if(tree.qualifier.isInstanceOf[New]){
               //New must be wrapped in a select, instrument the whole select
@@ -133,7 +135,6 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
     }
 
     def instrument(tree : Tree, pos: Position,  branch: Boolean)(implicit ctx: Context) : Tree = {
-      //return tree
       if(pos.exists && !pos.isZeroExtent && !tree.isType){// && !tree.symbol.is(Flags.PackageClass)
         val id = statementId.incrementAndGet()
        //if(id == 5) return tree
