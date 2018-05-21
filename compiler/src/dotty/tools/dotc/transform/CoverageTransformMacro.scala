@@ -65,15 +65,14 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           case Apply(fun, _) if(fun.symbol == defn.Boolean_&& || fun.symbol == defn.Boolean_||) =>
             //Don't lift the argument of Or and And in order to not change the execution order due to short-circuit
             super.transform(tree)
+          case tree@Apply(fun, args) if(fun.isInstanceOf[Apply]) =>
+            //We have nested apply, we have to lift all arguments
+            //Example: def T(x:Int)(y:Int)
+            //T(f())(1) // should not be change to {val $x = f(); T($x)}(1) but to {val $x = f(); val $y = 1; T($x)($y)}
+            liftApply(tree)
           case tree: Apply =>
             if(LiftCoverage.needLift(tree)){
-              var buffer = mutable.ListBuffer[Tree]()
-              //If only one of the args needs to be lifted, we have to lift everything
-              val lifted = LiftCoverage.liftForCoverage(buffer,tree)
-              //Instrument the new trees lifted
-              val instrumented = buffer.toList.map(transform)
-              //We can now instrument the apply as it is with a custom position to point to the function
-              Block(instrumented, instrument(lifted, Position(tree.fun.pos.point,tree.fun.pos.end) ,false))
+              liftApply(tree)
             } else {
               //No arguments to lift, continue the instrumentation on the subtree
               super.transform(tree)
@@ -119,6 +118,18 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           //   tree
           case _ => super.transform(tree)
         }
+    }
+    /**
+    * Lift all argument an apply
+    */
+    def liftApply(tree : Apply)(implicit ctx: Context) = {
+      var buffer = mutable.ListBuffer[Tree]()
+      //If only one of the args needs to be lifted, we have to lift everything
+      val lifted = LiftCoverage.liftForCoverage(buffer,tree)
+      //Instrument the new trees lifted
+      val instrumented = buffer.toList.map(transform)
+      //We can now instrument the apply as it is with a custom position to point to the function
+      Block(instrumented, instrument(lifted, Position(tree.fun.pos.point,tree.fun.pos.end) ,false))
     }
 
     def instrumentCases(cases : List[CaseDef])(implicit ctx: Context): List[CaseDef] = {
