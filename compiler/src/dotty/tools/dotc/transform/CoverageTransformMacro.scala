@@ -20,6 +20,7 @@ import dotty.tools.dotc.typer.LiftCoverage
 import java.io.File
 import collection.mutable
 import dotty.tools.dotc.util.Positions._
+import core.Flags.JavaDefined
 
 
 class CoverageTransformMacro extends MacroTransform with IdentityDenotTransformer { thisPhase =>
@@ -62,7 +63,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           case tree: Try =>
             //Instrument try and finally part as branch
             cpy.Try(tree)(expr = instrument(transform(tree.expr), true), cases  = instrumentCases(tree.cases), finalizer = instrument(transform(tree.finalizer), true))
-          case Apply(fun, _) if(fun.symbol == defn.Boolean_&& || fun.symbol == defn.Boolean_||) =>
+          case Apply(fun, _) if(fun.symbol.exists && fun.symbol.isInstanceOf[Symbol] && fun.symbol == defn.Boolean_&& || fun.symbol == defn.Boolean_||) =>
             //Don't lift the argument of Or and And in order to not change the execution order due to short-circuit
             super.transform(tree)
           case tree@Apply(fun, args) if(fun.isInstanceOf[Apply]) =>
@@ -77,7 +78,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
               //No arguments to lift, continue the instrumentation on the subtree
               super.transform(tree)
             }
-          case Select(qual, _) if(qual.symbol.moduleClass == defn.SystemModule) =>
+          case Select(qual, _) if(qual.symbol.exists && qual.symbol.is(JavaDefined)) =>
             //Java class can't be used as a value, we can't instrument the qualifier ({<Probe>;System}.xyz() is not possible !) instrument it as it is
             instrument(tree)
           case tree: Select =>
