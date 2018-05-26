@@ -93,6 +93,9 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           //Instrument as it is
           case tree: Literal =>
             instrument(tree)
+          case tree: Ident if(isWildcardArg(tree)) =>
+            //Don't want to instrument the wildcard arguments : var a = _ can not be instrumented
+            tree
           case tree: Ident =>
             instrument(tree)
           case tree: New =>
