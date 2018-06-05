@@ -1,21 +1,16 @@
 package dotty.runtime
 
 import scala.collection.{mutable, Set}
-import scala.collection.mutable.HashMap
-import scala.collection.generic.{ CanBuildFrom, MutableMapFactory }
-import java.io._
 import dotty.runtime.Platform._
+import java.lang.ThreadLocal
 
 /** @author Stephen Samuel */
 object Invoker {
 
   private val MeasurementsPrefix = "scoverage.measurements."
-  private val threadFiles = new ThreadLocal[mutable.HashMap[String, FileWriter]]
-
-  // For each data directory we maintain a thread-safe set tracking the ids that we've already
-  // seen and recorded. We're using a map as a set, so we only care about its keys and can ignore
-  // its values.
-  private val dataDirToIds = ThreadSafeMap.empty[String, ThreadSafeMap[Int, Any]]
+  private val threadFiles = new ThreadLocal[ThreadSafeMap[String, FileWriter]]
+  //private var ids = Set[Int]()
+  private val ids = ThreadLocal.withInitial[scala.collection.mutable.Set[Int]](() => scala.collection.mutable.Set[Int]());
 
   /**
    * We record that the given id has been invoked by appending its id to the coverage
@@ -38,30 +33,21 @@ object Invoker {
     // times since for coverage we only care about 1 or more, (it just slows things down to
     // do it more than once), anything we can do to help is good. This helps especially with code
     // that is executed many times quickly, eg tight loops.
-    if (!dataDirToIds.contains(dataDir)) {
-      // Guard against SI-7943: "TrieMap method getOrElseUpdate is not thread-safe".
-      dataDirToIds.synchronized {
-        if (!dataDirToIds.contains(dataDir)) {
-          dataDirToIds(dataDir) = ThreadSafeMap.empty[Int, Any]
-        }
-      }
-    }
-    val ids = dataDirToIds(dataDir)
-    if (!ids.contains(id)) {
+    if (!(ids.get.contains(id))) {
       // Each thread writes to a separate measurement file, to reduce contention
       // and because file appends via FileWriter are not atomic on Windows.
       var files = threadFiles.get()
       if (files == null) {
-        files = mutable.HashMap.empty[String, FileWriter]
+        files = ThreadSafeMap.empty[String, FileWriter]
         threadFiles.set(files)
       }
       val writer = files.getOrElseUpdate(dataDir, new FileWriter(measurementFile(dataDir), true))
-      writer.append(Integer.toString(id)).append("\n").flush()
+      writer.append(id.toString + '\n').flush()
 
-      ids.put(id, ())
+      ids.set(ids.get+id)
     }
   }
 
   def measurementFile(dataDir: File): File = measurementFile(dataDir.getAbsolutePath)
-  def measurementFile(dataDir: String): File = new File(dataDir, MeasurementsPrefix + Thread.currentThread.getId)
+def measurementFile(dataDir: String): File = new File(dataDir, MeasurementsPrefix + Thread.currentThread.getId)
 }
