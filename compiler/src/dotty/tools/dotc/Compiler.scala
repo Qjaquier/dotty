@@ -46,8 +46,8 @@ class Compiler {
     List(new FrontEnd) ::           // Compiler frontend: scanner, parser, namer, typer
     List(new sbt.ExtractDependencies) :: // Sends information on classes' dependencies to sbt via callbacks
     List(new PostTyper) ::          // Additional checks and cleanups after type checking
-    List(new sbt.ExtractAPI) ::     // Sends a representation of the API of classes to sbt via callbacks // List(new CoverageTransformMacro) :: // Perform instrumentation for coverage transform
-    List(new CoverageTransformMacro) :://List(new CoverageTransform) ::  // List(new CoverageTransformMacro) :: // Perform instrumentation for coverage transform
+    List(new sbt.ExtractAPI) ::     // Sends a representation of the API of classes to sbt via callbacks
+    List(new CoverageTransformMacro) :: // Perform instrumentation for coverage transform (if -coverage is present)
     Nil
 
   /** Phases dealing with TASTY tree pickling and unpickling */

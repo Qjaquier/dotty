@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 /**
  * @author Quentin Jaquier
- * Adapted from
+ * Adapted from the class Coverage of SCoverage 1.4.0
  * @author Stephen Samuel
  *
  * Class used to store coverage data

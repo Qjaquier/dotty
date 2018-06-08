@@ -5,7 +5,7 @@ import java.io._
 
 import scala.io.Source
 /**
- * Adapted from scoverage plugin
+ * Adapted from the class Serializer of SCoverage 1.4.0
  */
 object Serializer {
 
@@ -25,11 +25,11 @@ object Serializer {
       writer.write{
         "<statement>" +
           "<source>" +
-            stmt.source + 
+            stmt.source +
           "</source>" +
           "<package>" +
-           escape(stmt.location.packageName) + 
-          "</package>" + 
+           escape(stmt.location.packageName) +
+          "</package>" +
           "<class>" +
             escape(stmt.location.className) +
           "</class>" +
@@ -78,63 +78,6 @@ object Serializer {
         "</statement>"+
         "\n"
       }
-      /*
-//      writer.write {
-//        val xml = <statement>
-          <source>
-            {stmt.source}
-          </source>
-          <package>
-            {stmt.location.packageName}
-          </package>
-          <class>
-            {stmt.location.className}
-          </class>
-          <classType>
-            {stmt.location.classType.toString}
-          </classType>
-          <fullClassName>
-            {stmt.location.fullClassName}
-          </fullClassName>
-          <method>
-            {stmt.location.method}
-          </method>
-          <path>
-            {stmt.location.sourcePath}
-          </path>
-          <id>
-            {stmt.id.toString}
-          </id>
-          <start>
-            {stmt.start.toString}
-          </start>
-          <end>
-            {stmt.end.toString}
-          </end>
-          <line>
-            {stmt.line.toString}
-          </line>
-          <description>
-            {escape(stmt.desc)}
-          </description>
-          <symbolName>
-            {escape(stmt.symbolName)}
-          </symbolName>
-          <treeName>
-            {escape(stmt.treeName)}
-          </treeName>
-          <branch>
-            {stmt.branch.toString}
-          </branch>
-          <count>
-            {stmt.count.toString}
-          </count>
-          <ignored>
-            {stmt.ignored.toString}
-          </ignored>
-        </statement>
-//        Utility.trim(xml) + "\n"
-//      }*/
     }
     writer.write("<statements>\n")
     coverage.statements.foreach(stmt => writeStatement(stmt, writer))
