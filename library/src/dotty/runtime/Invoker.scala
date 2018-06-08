@@ -3,19 +3,26 @@ package dotty.runtime
 import scala.collection.{mutable, Set}
 import scala.collection.mutable.HashMap
 import scala.collection.generic.{ CanBuildFrom, MutableMapFactory }
-import java.io._
-import dotty.runtime.Platform._
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
+import scala.collection.concurrent.TrieMap
 
-/** @author Stephen Samuel */
+/** @author Stephen Samuel
+ *
+ * Adapted from Invoker of SCoverage 1.4.0
+ *
+*/
 object Invoker {
 
   private val MeasurementsPrefix = "scoverage.measurements."
-  private val threadFiles = new ThreadLocal[mutable.HashMap[String, FileWriter]]
+  private val threadFiles = new ThreadLocal[mutable.HashMap[String, Path]]
 
   // For each data directory we maintain a thread-safe set tracking the ids that we've already
   // seen and recorded. We're using a map as a set, so we only care about its keys and can ignore
   // its values.
-  private val dataDirToIds = ThreadSafeMap.empty[String, ThreadSafeMap[Int, Any]]
+  private val dataDirToIds = TrieMap.empty[String, TrieMap[Int, Any]]
 
   /**
    * We record that the given id has been invoked by appending its id to the coverage
@@ -42,7 +49,7 @@ object Invoker {
       // Guard against SI-7943: "TrieMap method getOrElseUpdate is not thread-safe".
       dataDirToIds.synchronized {
         if (!dataDirToIds.contains(dataDir)) {
-          dataDirToIds(dataDir) = ThreadSafeMap.empty[Int, Any]
+          dataDirToIds(dataDir) = TrieMap.empty[Int, Any]
         }
       }
     }
@@ -52,16 +59,14 @@ object Invoker {
       // and because file appends via FileWriter are not atomic on Windows.
       var files = threadFiles.get()
       if (files == null) {
-        files = mutable.HashMap.empty[String, FileWriter]
+        files = mutable.HashMap.empty[String, Path]
         threadFiles.set(files)
       }
-      val writer = files.getOrElseUpdate(dataDir, new FileWriter(measurementFile(dataDir), true))
-      writer.append(Integer.toString(id)).append("\n").flush()
+      val path = files.getOrElseUpdate(dataDir, Paths.get((dataDir + "/" + MeasurementsPrefix + Thread.currentThread.getId)))
+      val data = Integer.toString(id) + "\n"
+      Files.write(path, data.getBytes(), StandardOpenOption.APPEND, StandardOpenOption.CREATE);
 
       ids.put(id, ())
     }
   }
-
-  def measurementFile(dataDir: File): File = measurementFile(dataDir.getAbsolutePath)
-  def measurementFile(dataDir: String): File = new File(dataDir, MeasurementsPrefix + Thread.currentThread.getId)
 }
