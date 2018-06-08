@@ -22,12 +22,15 @@ import collection.mutable
 import dotty.tools.dotc.util.Positions._
 import core.Flags.JavaDefined
 
-
+/**
+  Phase that implements code coverage, executed when the option "-corverage OUTPUT_PATH" is added to the compilation.
+*/
 class CoverageTransformMacro extends MacroTransform with IdentityDenotTransformer { thisPhase =>
   import ast.tpd._
 
   override def phaseName = "coverage"
 
+  //Atomic counter used for assination of ID to the different statements
   val statementId = new AtomicInteger(0)
 
   var outputPath = ""
@@ -39,6 +42,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
     //Test if -coverage is present, otherwise, don't add coverage probe.
     if (ctx.settings.coverageOutputDir.value != ""){
         outputPath = ctx.settings.coverageOutputDir.value
+        //Start the transformation
         super.run
         //Clean the outputpath dir
         val dataDir = new File(outputPath)
@@ -73,6 +77,7 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
             liftApply(tree)
           case tree: Apply =>
             if(LiftCoverage.needLift(tree)){
+              //One argument of the apply is complex, we need to lift all arguments of the apply
               liftApply(tree)
             } else {
               //No arguments to lift, continue the instrumentation on the subtree
@@ -117,14 +122,12 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
           //Don't instrument
           case tree: Import =>
             tree
-          //Transform the rest
-          // case tree:Closure =>
-          //   tree
+          //Recursively transform the rest
           case _ => super.transform(tree)
         }
     }
     /**
-    * Lift all argument an apply
+    * Lift all argument of an apply
     */
     def liftApply(tree : Apply)(implicit ctx: Context) = {
       var buffer = mutable.ListBuffer[Tree]()
@@ -141,18 +144,25 @@ class CoverageTransformMacro extends MacroTransform with IdentityDenotTransforme
     }
 
     def instrumentCaseDef(tree : CaseDef)(implicit ctx: Context) : CaseDef = {
-      //Don't add coverage to the pattern // TODO : Check if not alreay done
+      //Don't add coverage to the pattern
       cpy.CaseDef(tree)(tree.pat, transform(tree.guard), transform(tree.body))
     }
 
+    /**
+      Instrument the tree with his original postion
+    */
     def instrument(tree : Tree, branch: Boolean = false)(implicit ctx: Context) : Tree = {
       instrument(tree, tree.pos, branch)
     }
 
+    /**
+      Instrument the tree tree with position pos.
+      This function will return a new tree with additional code that will be responsible to trask if the tree has been executed
+      at runtime.
+    */
     def instrument(tree : Tree, pos: Position,  branch: Boolean)(implicit ctx: Context) : Tree = {
-      if(pos.exists && !pos.isZeroExtent && !tree.isType){// && !tree.symbol.is(Flags.PackageClass)
+      if(pos.exists && !pos.isZeroExtent && !tree.isType){
         val id = statementId.incrementAndGet()
-       //if(id == 5) return tree
         val statement = new Statement(
           ctx.source.file.absolute.toString(), //Source
           Location(tree),

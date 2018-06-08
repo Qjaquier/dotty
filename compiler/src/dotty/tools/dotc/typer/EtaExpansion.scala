@@ -154,7 +154,6 @@ object LiftCoverage extends LiftComplex {
 
   var liftEverything = false
 
-
   /** Return true if the apply needs a lift in the coverage phase
     Return false if the args are empty, if one or more will be lifter by a complex lifter.
    */
@@ -162,12 +161,12 @@ object LiftCoverage extends LiftComplex {
     !tree.args.isEmpty && !tree.args.forall(super.noLift(_))
   }
 
-override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && super.noLift(expr)
+  override def noLift(expr: tpd.Tree)(implicit ctx: Context) = !liftEverything && super.noLift(expr)
 
   def liftForCoverage(defs: mutable.ListBuffer[tpd.Tree], tree: tpd.Apply)(implicit ctx: Context) = {
     //Try to lift the fun with the complex noLift
     val liftedFun = liftApp(defs, tree.fun)
-    //We want to lift every args
+    //We want to lift every args, even the non complex one
     liftEverything = true
     val liftedArgs = liftArgs(defs, tree.fun.tpe, tree.args)
     liftEverything = false
